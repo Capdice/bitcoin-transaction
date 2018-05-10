@@ -136,7 +136,7 @@ function getBalance (addr, options) {
 	if (options.balanceProvider == null) options.balanceProvider = providers.balance[options.network].default;
 
 	return options.balanceProvider(addr).then(function (balSat) {
-		return balSat/BITCOIN_SAT_MULT;
+		return balSat;
 	});
 }
 
