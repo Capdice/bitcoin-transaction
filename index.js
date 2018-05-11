@@ -1,10 +1,10 @@
-var bitcoin = require('bitcoinjs-lib');
-var request = require('superagent');
+let bitcoin = require('bitcoinjs-lib');
+let request = require('superagent');
 
-var BITCOIN_DIGITS = 8;
-var BITCOIN_SAT_MULT = Math.pow(10, BITCOIN_DIGITS);
+let BITCOIN_DIGITS = 8;
+let BITCOIN_SAT_MULT = Math.pow(10, BITCOIN_DIGITS);
 
-var providers = {
+let providers = {
 	/**
 	 * Input: Address to retrieve the balance from.
 	 * Output: The balance in Satoshis.
@@ -117,6 +117,20 @@ var providers = {
 				return request.post('https://api.blockcypher.com/v1/btc/test3/txs/push').send('{"tx":"' + hexTrans + '"}');
 			}
 		}
+	},
+
+	txnInfo: {
+		mainnet: {
+			blockexplorer: (txnHash) => {
+				return request.get('https://blockexplorer.com/api/tx/' + txnHash).send()
+			}
+		},
+
+		testnet: {
+			blockexplorer: (txnHash) => {
+				return request.get('https://testnet.blockexplorer.com/api/tx/' + txnHash).send()
+			}
+		}
 	}
 }
 
@@ -129,8 +143,10 @@ providers.utxo.mainnet.default = providers.utxo.mainnet.blockexplorer;
 providers.utxo.testnet.default = providers.utxo.testnet.blockexplorer;
 providers.pushtx.mainnet.default = providers.pushtx.mainnet.blockchain;
 providers.pushtx.testnet.default = providers.pushtx.testnet.blockcypher;
+providers.txnInfo.mainnet.default = providers.txnInfo.mainnet.blockexplorer;
+providers.txnInfo.testnet.default = providers.txnInfo.testnet.blockexplorer;
 
-function getBalance (addr, options) {
+function getBalance(addr, options) {
 	if (options == null) options = {};
 	if (options.network == null) options.network = "mainnet";
 	if (options.balanceProvider == null) options.balanceProvider = providers.balance[options.network].default;
@@ -140,11 +156,11 @@ function getBalance (addr, options) {
 	});
 }
 
-function getTransactionSize (numInputs, numOutputs) {
-	return numInputs*180 + numOutputs*34 + 10 + numInputs;
+function getTransactionSize(numInputs, numOutputs) {
+	return numInputs * 180 + numOutputs * 34 + 10 + numInputs;
 }
 
-function getFees (provider, feeName) {
+function getFees(provider, feeName) {
 	if (typeof feeName === 'number') {
 		return new Promise.resolve(feeName);
 	} else {
@@ -152,13 +168,14 @@ function getFees (provider, feeName) {
 	}
 }
 
-function sendTransaction (options) {
+async function sendTransaction(options) {
 	//Required
 	if (options == null || typeof options !== 'object') throw "Options must be specified and must be an object.";
 	if (options.from == null) throw "Must specify from address.";
 	if (options.to == null) throw "Must specify to address.";
-	if (options.btc == null) throw "Must specify amount of btc to send.";
+	if (options.amount == null) throw "Must specify amount of Satoshi to send.";
 	if (options.privKeyWIF == null) throw "Must specify the wallet's private key in WIF format.";
+
 
 	//Optionals
 	if (options.network == null) options.network = 'mainnet';
@@ -167,57 +184,67 @@ function sendTransaction (options) {
 	if (options.utxoProvider == null) options.utxoProvider = providers.utxo[options.network].default;
 	if (options.pushtxProvider == null) options.pushtxProvider = providers.pushtx[options.network].default;
 	if (options.dryrun == null) options.dryrun = false;
+	if (options.emptyWallet == null) options.emptyWallet = false;
 
-	var from = options.from;
-	var to = options.to;
-	var amount = options.btc;
-	var amtSatoshi = Math.floor(amount*BITCOIN_SAT_MULT);
-	var bitcoinNetwork = options.network == "testnet" ? bitcoin.networks.testnet : bitcoin.networks.bitcoin;
+	let from = options.from;
+	let to = options.to;
+	let amtSatoshi = options.amount;
+	let bitcoinNetwork = options.network == "testnet" ? bitcoin.networks.testnet : bitcoin.networks.bitcoin;
 
-	return Promise.all([
-		getFees(options.feesProvider, options.fee),
-		options.utxoProvider(from)
-	]).then(function (res) {
-		var feePerByte = res[0];
-		var utxos = res[1];
+	let feePerByte = await getFees(options.feesProvider, options.fee)
+	let utxos = await options.utxoProvider(from);
 
-		//Setup inputs from utxos
-		var tx = new bitcoin.TransactionBuilder(bitcoinNetwork);
-		var ninputs = 0;
-		var availableSat = 0;
-		for (var i = 0; i < utxos.length; i++) {
-			var utxo = utxos[i];
-			if (utxo.confirmations >= 6) {
-				tx.addInput(utxo.txid, utxo.vout);
-				availableSat += utxo.satoshis;
-				ninputs++;
+	//Setup inputs from utxos
+	let tx = new bitcoin.TransactionBuilder(bitcoinNetwork);
+	let ninputs = 0;
+	let availableSat = 0;
+	for (let i = 0; i < utxos.length; i++) {
+		let utxo = utxos[i];
+		if (utxo.confirmations >= 6) {
+			tx.addInput(utxo.txid, utxo.vout);
+			availableSat += utxo.satoshis;
+			ninputs++;
 
-				if (availableSat >= amtSatoshi) break;
-			}
+			if (availableSat >= amtSatoshi) break;
 		}
+	}
 
-		if (availableSat < amtSatoshi) throw "You do not have enough in your wallet to send that much.";
+	if (availableSat < amtSatoshi) throw "You do not have enough in your wallet to send that much. Available: " + availableSat + "\t\t Required: " + amtSatoshi;
 
-		var change = availableSat - amtSatoshi;
-		var fee = getTransactionSize(ninputs, change > 0 ? 2 : 1)*feePerByte;
-		if (fee > amtSatoshi) throw "BitCoin amount must be larger than the fee. (Ideally it should be MUCH larger)";
-		tx.addOutput(to, amtSatoshi - fee);
-		if (change > 0) tx.addOutput(from, change);
-		var keyPair = bitcoin.ECPair.fromWIF(options.privKeyWIF, bitcoinNetwork);
-		for (var i = 0; i < ninputs; i++) {
-			tx.sign(i, keyPair);
-		}
-		var msg = tx.build().toHex();
-		if (options.dryrun) {
-			return msg;
-		} else {
-			return options.pushtxProvider(msg);
-		}
-	});
+	let change = availableSat - amtSatoshi;
+	let fee = getTransactionSize(ninputs, change > 0 ? 2 : 1) * feePerByte;
+	if (fee > amtSatoshi) throw "BitCoin amount must be larger than the fee. (Ideally it should be MUCH larger)";
+	tx.addOutput(to, amtSatoshi - fee);
+	if (change > 0) tx.addOutput(options.emptyWallet ? to : from, change);
+	let keyPair = bitcoin.ECPair.fromWIF(options.privKeyWIF, bitcoinNetwork);
+	for (let i = 0; i < ninputs; i++) {
+		tx.sign(i, keyPair);
+	}
+	let msg = tx.build().toHex();
+	if (options.dryrun) {
+		return tx;
+	} else {
+		return await options.pushtxProvider(msg);
+	}
+
+}
+
+function getTransactionInfo(options) {
+	//Required
+	if (options == null || typeof options !== 'object') throw "Options must be specified and must be an object.";
+	if (options.txnHash == null) throw "Must specify the hash";
+
+	//Optionals
+	if (options.network == null) options.network = 'mainnet';
+	if (options.fee == null) options.fee = 'fastest';
+	if (options.txnInfoProvider == null) options.txnInfoProvider = providers.txnInfo[options.network].default;
+
+	return options.txnInfoProvider(options.txnHash);
 }
 
 module.exports = {
 	providers: providers,
 	getBalance: getBalance,
-	sendTransaction: sendTransaction
+	sendTransaction: sendTransaction,
+	getTxnInfo: getTransactionInfo
 }
