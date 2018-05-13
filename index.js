@@ -11,22 +11,13 @@ let providers = {
 	 */
 	balance: {
 		mainnet: {
-			blockexplorer: function (addr) {
-				return request.get('https://blockexplorer.com/api/addr/' + addr + '/balance').send().then(function (res) {
-					return parseFloat(res.body);
-				});
-			},
-			blockchain: function (addr) {
-				return request.get('https://blockchain.info/q/addressbalance/' + addr + '?confirmations=6').send().then(function (res) {
-					return parseFloat(res.body);
-				});
+			blockchain: async (addr) => {
+				return parseFloat((await request.get('https://blockchain.info/q/addressbalance/' + addr + '?confirmations=6').send()).text)
 			}
 		},
 		testnet: {
-			blockexplorer: function (addr) {
-				return request.get('https://testnet.blockexplorer.com/api/addr/' + addr + '/balance').send().then(function (res) {
-					return parseFloat(res.body);
-				});
+			blockchain: async (addr) => {
+				return parseFloat((await request.get('https://testnet.blockchain.info/q/addressbalance/' + addr + '?confirmations=6').send()).text)
 			}
 		}
 	},
@@ -56,43 +47,27 @@ let providers = {
 	 */
 	utxo: {
 		mainnet: {
-			blockexplorer: function (addr) {
-				return request.get('https://blockexplorer.com/api/addr/' + addr + '/utxo?noCache=1').send().then(function (res) {
-					return res.body.map(function (e) {
-						return {
-							txid: e.txid,
-							vout: e.vout,
-							satoshis: e.satoshis,
-							confirmations: e.confirmations
-						};
-					});
-				});
-			},
-			blockchain: function (addr) {
-				return request.get('https://blockchain.info/unspent?active=' + addr).send().then(function (res) {
-					return res.body.unspent_outputs.map(function (e) {
-						return {
-							txid: e.tx_hash_big_endian,
-							vout: e.tx_output_n,
-							satoshis: e.value,
-							confirmations: e.confirmations
-						};
-					});
-				});
+			blockchain: async (addr) => {
+				return (await request.get('https://blockchain.info/unspent?active=' + addr).send()).body.unspent_outputs.map(e => {
+					return {
+						txid: e.tx_hash_big_endian,
+						vout: e.tx_output_n,
+						satoshis: e.value,
+						confirmations: e.confirmations
+					};
+				})
 			}
 		},
 		testnet: {
-			blockexplorer: function (addr) {
-				return request.get('https://testnet.blockexplorer.com/api/addr/' + addr + '/utxo?noCache=1').send().then(function (res) {
-					return res.body.map(function (e) {
-						return {
-							txid: e.txid,
-							vout: e.vout,
-							satoshis: e.satoshis,
-							confirmations: e.confirmations
-						};
-					});
-				});
+			blockchain: async (addr) => {
+				return (await request.get('https://testnet.blockchain.info/unspent?active=' + addr).send()).body.unspent_outputs.map(e => {
+					return {
+						txid: e.tx_hash_big_endian,
+						vout: e.tx_output_n,
+						satoshis: e.value,
+						confirmations: e.confirmations
+					};
+				})
 			}
 		}
 	},
@@ -102,24 +77,18 @@ let providers = {
 	 */
 	pushtx: {
 		mainnet: {
-			blockexplorer: function (hexTrans) {
-				return request.post('https://blockexplorer.com/api/tx/send').send('rawtx: ' + hexTrans);
-			},
-			blockchain: function (hexTrans) {
+			blockchain: async (hexTrans) => {
 				return request.post('https://blockchain.info/pushtx').send('tx=' + hexTrans);
 			}
 		},
 		testnet: {
-			blockexplorer: function (hexTrans) {
-				return request.post('https://testnet.blockexplorer.com/api/tx/send').send('rawtx: ' + hexTrans);
-			},
-			blockcypher: function (hexTrans) {
-				return request.post('https://api.blockcypher.com/v1/btc/test3/txs/push').send('{"tx":"' + hexTrans + '"}');
+			blockchain: async (hexTrans) => {
+				return request.post('https://testnet.blockchain.info/pushtx').send('tx=' + hexTrans);
 			}
 		}
 	},
 
-	txnInfo: {
+	txnInfo: { //TODO Output needs to be standardised.
 		mainnet: {
 			blockexplorer: (txnHash) => {
 				return request.get('https://blockexplorer.com/api/tx/' + txnHash).send()
@@ -135,36 +104,38 @@ let providers = {
 }
 
 //Set default providers
-providers.balance.mainnet.default = providers.balance.mainnet.blockexplorer;
-providers.balance.testnet.default = providers.balance.testnet.blockexplorer;
+providers.balance.mainnet.default = providers.balance.mainnet.blockchain;
+providers.balance.testnet.default = providers.balance.testnet.blockchain;
+
 providers.fees.mainnet.default = providers.fees.mainnet.earn;
 providers.fees.testnet.default = providers.fees.testnet.earn;
-providers.utxo.mainnet.default = providers.utxo.mainnet.blockexplorer;
-providers.utxo.testnet.default = providers.utxo.testnet.blockexplorer;
+
+providers.utxo.mainnet.default = providers.utxo.mainnet.blockchain;
+providers.utxo.testnet.default = providers.utxo.testnet.blockchain;
+
 providers.pushtx.mainnet.default = providers.pushtx.mainnet.blockcypher;
 providers.pushtx.testnet.default = providers.pushtx.testnet.blockcypher;
+
 providers.txnInfo.mainnet.default = providers.txnInfo.mainnet.blockexplorer;
 providers.txnInfo.testnet.default = providers.txnInfo.testnet.blockexplorer;
 
-function getBalance(addr, options) {
+async function getBalance(addr, options) {
 	if (options == null) options = {};
 	if (options.network == null) options.network = "mainnet";
 	if (options.balanceProvider == null) options.balanceProvider = providers.balance[options.network].default;
 
-	return options.balanceProvider(addr).then(function (balSat) {
-		return balSat;
-	});
+	return options.balanceProvider(addr);
 }
 
 function getTransactionSize(numInputs, numOutputs) {
 	return numInputs * 180 + numOutputs * 34 + 10 + numInputs;
 }
 
-function getFees(provider, feeName) {
+async function getFees(provider, feeName) {
 	if (typeof feeName === 'number') {
-		return new Promise.resolve(feeName);
+		return feeName
 	} else {
-		return provider(feeName);
+		return await provider(feeName);
 	}
 }
 
@@ -242,9 +213,21 @@ function getTransactionInfo(options) {
 	return options.txnInfoProvider(options.txnHash);
 }
 
+async function getUserTxns(options) {
+	if (options == null || typeof options !== 'object') throw "Options must be specified and must be an object.";
+	if (options.address == null) throw "Must specify the address";
+
+	if (options.network == null) options.network = 'mainnet';
+	if (options.utxoProvider == null) options.utxoProvider = providers.utxo[options.network].default;
+
+	let result = await options.utxoProvider(options.address)
+	return result
+}
+
 module.exports = {
 	providers: providers,
 	getBalance: getBalance,
 	sendTransaction: sendTransaction,
-	getTxnInfo: getTransactionInfo
+	getTxnInfo: getTransactionInfo,
+	getUserTxns: getUserTxns
 }
