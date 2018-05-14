@@ -77,13 +77,13 @@ let providers = {
 	 */
 	pushtx: {
 		mainnet: {
-			blockexplorer: function (hexTrans) {
-				return request.post('https://blockexplorer.com/api/tx/send').send('rawtx: ' + hexTrans);
+			blockcypher: async function (hexTrans) {
+				return (await request.post('https://api.blockcypher.com/v1/btc/main/txs/push').send('{"tx":"' + hexTrans + '"}')).text;
 			}
 		},
 		testnet: {
-			blockexplorer: function (hexTrans) {
-				return request.post('https://testnet.blockexplorer.com/api/tx/send').send('rawtx: ' + hexTrans);
+			blockcypher: async function (hexTrans) {
+				return  (await request.post('https://api.blockcypher.com/v1/btc/test3/txs/push').send('{"tx":"' + hexTrans + '"}')).text;
 			}
 		}
 	},
@@ -113,8 +113,8 @@ providers.fees.testnet.default = providers.fees.testnet.earn;
 providers.utxo.mainnet.default = providers.utxo.mainnet.blockchain;
 providers.utxo.testnet.default = providers.utxo.testnet.blockchain;
 
-providers.pushtx.mainnet.default = providers.pushtx.mainnet.blockexplorer;
-providers.pushtx.testnet.default = providers.pushtx.testnet.blockexplorer;
+providers.pushtx.mainnet.default = providers.pushtx.mainnet.blockcypher;
+providers.pushtx.testnet.default = providers.pushtx.testnet.blockcypher;
 
 providers.txnInfo.mainnet.default = providers.txnInfo.mainnet.blockexplorer;
 providers.txnInfo.testnet.default = providers.txnInfo.testnet.blockexplorer;
@@ -171,6 +171,7 @@ async function sendTransaction(options) {
 	let availableSat = 0;
 	for (let i = 0; i < utxos.length; i++) {
 		let utxo = utxos[i];
+		//CHECKLIST Make sure the no of confirmations is 6.
 		if (utxo.confirmations >= 6) {
 			tx.addInput(utxo.txid, utxo.vout);
 			availableSat += utxo.satoshis;
@@ -210,7 +211,7 @@ async function getTransactionInfo(options) {
 	if (options.fee == null) options.fee = 'fastest';
 	if (options.txnInfoProvider == null) options.txnInfoProvider = providers.txnInfo[options.network].default;
 
-	return ( await options.txnInfoProvider(options.txnHash)).body;
+	return (await options.txnInfoProvider(options.txnHash)).body;
 }
 
 async function getUserTxns(options) {
