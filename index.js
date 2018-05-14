@@ -77,13 +77,13 @@ let providers = {
 	 */
 	pushtx: {
 		mainnet: {
-			blockchain: async (hexTrans) => {
-				return request.post('https://blockchain.info/pushtx').send('tx=' + hexTrans);
+			blockexplorer: function (hexTrans) {
+				return request.post('https://blockexplorer.com/api/tx/send').send('rawtx: ' + hexTrans);
 			}
 		},
 		testnet: {
-			blockchain: async (hexTrans) => {
-				return request.post('https://testnet.blockchain.info/pushtx').send('tx=' + hexTrans);
+			blockexplorer: function (hexTrans) {
+				return request.post('https://testnet.blockexplorer.com/api/tx/send').send('rawtx: ' + hexTrans);
 			}
 		}
 	},
@@ -113,8 +113,8 @@ providers.fees.testnet.default = providers.fees.testnet.earn;
 providers.utxo.mainnet.default = providers.utxo.mainnet.blockchain;
 providers.utxo.testnet.default = providers.utxo.testnet.blockchain;
 
-providers.pushtx.mainnet.default = providers.pushtx.mainnet.blockcypher;
-providers.pushtx.testnet.default = providers.pushtx.testnet.blockcypher;
+providers.pushtx.mainnet.default = providers.pushtx.mainnet.blockexplorer;
+providers.pushtx.testnet.default = providers.pushtx.testnet.blockexplorer;
 
 providers.txnInfo.mainnet.default = providers.txnInfo.mainnet.blockexplorer;
 providers.txnInfo.testnet.default = providers.txnInfo.testnet.blockexplorer;
@@ -200,7 +200,7 @@ async function sendTransaction(options) {
 
 }
 
-function getTransactionInfo(options) {
+async function getTransactionInfo(options) {
 	//Required
 	if (options == null || typeof options !== 'object') throw "Options must be specified and must be an object.";
 	if (options.txnHash == null) throw "Must specify the hash";
@@ -210,7 +210,7 @@ function getTransactionInfo(options) {
 	if (options.fee == null) options.fee = 'fastest';
 	if (options.txnInfoProvider == null) options.txnInfoProvider = providers.txnInfo[options.network].default;
 
-	return options.txnInfoProvider(options.txnHash);
+	return ( await options.txnInfoProvider(options.txnHash)).body;
 }
 
 async function getUserTxns(options) {
