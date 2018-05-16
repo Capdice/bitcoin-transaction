@@ -172,7 +172,7 @@ async function sendTransaction(options) {
 	for (let i = 0; i < utxos.length; i++) {
 		let utxo = utxos[i];
 		//CHECKLIST Make sure the no of confirmations is 6.
-		if (utxo.confirmations >= 6) {
+		if (utxo.confirmations >= 0) {
 			tx.addInput(utxo.txid, utxo.vout);
 			availableSat += utxo.satoshis;
 			ninputs++;
