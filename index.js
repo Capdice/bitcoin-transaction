@@ -78,12 +78,12 @@ let providers = {
 	pushtx: {
 		mainnet: {
 			blockcypher: async function (hexTrans) {
-				return (await request.post('https://api.blockcypher.com/v1/btc/main/txs/push').send('{"tx":"' + hexTrans + '"}')).text;
+				return JSON.parse((await request.post('https://api.blockcypher.com/v1/btc/main/txs/push').send('{"tx":"' + hexTrans + '"}')).text);
 			}
 		},
 		testnet: {
 			blockcypher: async function (hexTrans) {
-				return  (await request.post('https://api.blockcypher.com/v1/btc/test3/txs/push').send('{"tx":"' + hexTrans + '"}')).text;
+				return JSON.parse((await request.post('https://api.blockcypher.com/v1/btc/test3/txs/push').send('{"tx":"' + hexTrans + '"}')).text);
 			}
 		}
 	},
